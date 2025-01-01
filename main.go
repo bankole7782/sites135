@@ -28,6 +28,8 @@ func main() {
 
 Example Commands
 sites135 sitemap http://127.0.0.1:8080 https://example.com
+
+sites135 c404 http://127.0.0.1:8080
 		`)
 
 	case "sitemap":
