@@ -39,7 +39,7 @@ sites135 sitemap http://127.0.0.1:8080 https://example.com
 		localAddr := os.Args[2]
 		publicAddr := os.Args[3]
 
-		links, err := getLocalWebsiteLinks(localAddr)
+		links, err := getWebsiteLinks(localAddr, true)
 		if err != nil {
 			color.Red.Println(err.Error())
 			os.Exit(1)
@@ -62,7 +62,40 @@ sites135 sitemap http://127.0.0.1:8080 https://example.com
 		fmt.Println(writer.String())
 
 	case "c404":
+		if len(os.Args) != 3 {
+			color.Red.Println("expecting 3 args. addr")
+			os.Exit(1)
+		}
 
+		localAddr := os.Args[2]
+		links, err := getWebsiteLinks(localAddr, false)
+		if err != nil {
+			color.Red.Println(err.Error())
+			os.Exit(1)
+		}
+
+		fmt.Printf("Gotten all links. Total: %d\n", len(links))
+
+		errorCount := 0
+		for _, link := range links {
+			var newAddr string
+			if strings.HasPrefix(link, "/") {
+				newAddr, _ = url.JoinPath(localAddr, link)
+			} else {
+				newAddr = link
+			}
+			res, err := http.Get(newAddr)
+			if err != nil {
+				fmt.Println(err.Error())
+			}
+			defer res.Body.Close()
+			if res.StatusCode == 404 {
+				fmt.Printf("Not Found: %s\n", newAddr)
+				errorCount += 1
+			}
+		}
+
+		fmt.Printf("404 count: %d\n", errorCount)
 	}
 
 }
@@ -97,7 +130,7 @@ func getLinksForAPage(addr string) ([]string, error) {
 	return ret, nil
 }
 
-func getWebsiteLinks(addr string) ([]string, error) {
+func getWebsiteLinks(addr string, localOnly bool) ([]string, error) {
 	ret, err := getLinksForAPage(addr)
 	if err != nil {
 		return nil, err
@@ -121,9 +154,6 @@ func getWebsiteLinks(addr string) ([]string, error) {
 		}
 
 		visited = append(visited, toWorkOnLink)
-		if !strings.HasPrefix(toWorkOnLink, "/") {
-			continue
-		}
 		newAddr, err := url.JoinPath(addr, toWorkOnLink)
 		if err != nil {
 			fmt.Println(err)
@@ -144,15 +174,14 @@ func getWebsiteLinks(addr string) ([]string, error) {
 		continue
 	}
 
-	return ret, nil
+	if localOnly {
+		return getLocalLinks(addr, ret)
+	} else {
+		return visited, nil
+	}
 }
 
-func getLocalWebsiteLinks(addr string) ([]string, error) {
-	links, err := getWebsiteLinks(addr)
-	if err != nil {
-		return nil, err
-	}
-
+func getLocalLinks(addr string, links []string) ([]string, error) {
 	ret := make([]string, 0)
 	for _, link := range links {
 		if strings.HasPrefix(link, "/") {
