@@ -59,7 +59,7 @@ sites135 sitemap http://127.0.0.1:8080 https://example.com
 		var outStr string
 		writer := bytes.NewBufferString(outStr)
 		sm.WriteTo(writer)
-		fmt.Println(writer.String())
+		os.WriteFile("sitemap.xml", []byte(writer.String()), 0777)
 
 	case "c404":
 		if len(os.Args) != 3 {
