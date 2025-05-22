@@ -61,7 +61,7 @@ sites135 c404 http://127.0.0.1:8080
 		var outStr string
 		writer := bytes.NewBufferString(outStr)
 		sm.WriteTo(writer)
-		os.WriteFile("sitemap.xml", []byte(writer.String()), 0777)
+		os.WriteFile("sitemap.xml", writer.Bytes(), 0777)
 
 	case "c404":
 		if len(os.Args) != 3 {
@@ -112,7 +112,7 @@ func getLinksForAPage(addr string) ([]string, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return nil, errors.New(fmt.Sprintf("status code error: %d %s", res.StatusCode, res.Status))
+		return nil, nil
 	}
 
 	// Load the HTML document
