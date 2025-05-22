@@ -102,6 +102,14 @@ sites135 c404 http://127.0.0.1:8080
 
 }
 
+func isAbsoluteURL(testURL string) bool {
+	parsedURL, err := url.Parse(testURL)
+	if err != nil {
+		return false
+	}
+	return parsedURL.IsAbs()
+}
+
 func getLinksForAPage(addr string) ([]string, error) {
 	ret := make([]string, 0)
 
@@ -112,7 +120,7 @@ func getLinksForAPage(addr string) ([]string, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return nil, nil
+		return nil, errors.New(fmt.Sprintf("addr: %s status code error: %d %s", addr, res.StatusCode, res.Status))
 	}
 
 	// Load the HTML document
@@ -156,24 +164,25 @@ func getWebsiteLinks(addr string, localOnly bool) ([]string, error) {
 		}
 
 		visited = append(visited, toWorkOnLink)
-		newAddr, err := url.JoinPath(addr, toWorkOnLink)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		innerRet, err := getLinksForAPage(newAddr)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		for _, aLink2 := range innerRet {
-			if !slices.Contains(ret, aLink2) {
-				ret = append(ret, aLink2)
+		if !isAbsoluteURL(toWorkOnLink) {
+			newAddr, err := url.JoinPath(addr, toWorkOnLink)
+			if err != nil {
+				fmt.Println(err)
+				continue
 			}
-		}
+			innerRet, err := getLinksForAPage(newAddr)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
 
-		continue
+			for _, aLink2 := range innerRet {
+				if !slices.Contains(ret, aLink2) {
+					ret = append(ret, aLink2)
+				}
+			}
+
+		}
 	}
 
 	if localOnly {
