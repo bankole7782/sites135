@@ -50,8 +50,10 @@ func getLinksForAPage(addr string, withAssetsLinks bool) ([]string, error) {
 		}
 	}
 
+	addrEsc, _ := url.QueryUnescape(addr)
+
 	// Request the HTML page.
-	res, err := http.Get(addr)
+	res, err := http.Get(addrEsc)
 	if err != nil {
 		return nil, errors.Wrap(err, "http error")
 	}
@@ -110,37 +112,42 @@ func getWebsiteLinks(addr string, localOnly, withAssetsLinks bool) ([]string, er
 		return nil, err
 	}
 
-	loopIndex := 0
-	total := len(ret)
+	visited := []string{"/"}
 	for {
-		if loopIndex >= total {
+		toWorkOnLink := ""
+		endLoopIndex := 0
+		for i, aLink := range ret {
+			if !slices.Contains(visited, aLink) {
+				toWorkOnLink = aLink
+				break
+			}
+			endLoopIndex = i
+		}
+
+		if endLoopIndex == len(ret)-1 {
 			break
 		}
 
-		toWorkOnLink := ret[loopIndex]
-		if isAbsoluteURL(toWorkOnLink) {
-			loopIndex += 1
-			continue
-		}
-		newAddr, err := url.JoinPath(addr, toWorkOnLink)
-		if err != nil {
-			loopIndex += 1
-			fmt.Println(err)
-			continue
-		}
-		innerRet, err := getLinksForAPage(newAddr, withAssetsLinks)
-		if err != nil {
-			loopIndex += 1
-			// fmt.Println(err)
-			continue
-		}
+		visited = append(visited, toWorkOnLink)
+		if !isAbsoluteURL(toWorkOnLink) {
+			newAddr, err := url.JoinPath(addr, toWorkOnLink)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			innerRet, err := getLinksForAPage(newAddr, withAssetsLinks)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
 
-		ret = append(ret, innerRet...)
-		slices.Sort(ret)
-		ret = slices.Compact(ret)
-		total = len(ret)
+			for _, aLink2 := range innerRet {
+				if !slices.Contains(ret, aLink2) {
+					ret = append(ret, aLink2)
+				}
+			}
 
-		loopIndex += 1
+		}
 	}
 
 	if localOnly {
