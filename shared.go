@@ -90,6 +90,15 @@ func getLinksForAPage(addr string, withAssetsLinks bool) ([]string, error) {
 			}
 			ret = append(ret, val)
 		})
+
+		doc.Find("script").Each(func(i int, s *goquery.Selection) {
+			val, ok := s.Attr("src")
+			if !ok {
+				return
+			}
+			ret = append(ret, val)
+		})
+
 	}
 
 	return ret, nil
