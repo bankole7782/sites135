@@ -120,7 +120,6 @@ sites135 c404 http://127.0.0.1:8080
 		}
 
 		fmt.Printf("Gotten all links. Total: %d\n", len(links))
-		fmt.Println(links)
 
 		baseOutPath := filepath.Join(rootPath, projectName)
 		os.MkdirAll(baseOutPath, 0777)
@@ -155,10 +154,6 @@ sites135 c404 http://127.0.0.1:8080
 			if !strings.Contains(toWritePath, ".") {
 				toWritePath += ".html"
 			}
-			lastSym := strings.LastIndex(toWritePath, "?")
-			if lastSym != -1 {
-				toWritePath = toWritePath[:lastSym]
-			}
 			err = os.MkdirAll(filepath.Dir(toWritePath), 0777)
 			if err != nil {
 				fmt.Println(err)
@@ -171,18 +166,6 @@ sites135 c404 http://127.0.0.1:8080
 			// time.Sleep(1 * time.Second)
 		}
 
-	case "wdls":
-		if len(os.Args) != 4 {
-			color.Red.Println("expecting args: projectname")
-			os.Exit(1)
-		}
-		projectName := os.Args[2]
-		port := os.Args[3]
-		serveWDl(projectName, port)
-
-	default:
-		color.Red.Println("Invalid arguments: ", os.Args[1:])
-		os.Exit(1)
 	}
 
 }
