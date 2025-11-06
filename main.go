@@ -3,27 +3,22 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/gookit/color"
+	"github.com/pkg/errors"
 	"github.com/snabb/sitemap"
 )
 
 func main() {
 	if len(os.Args) < 2 {
 		color.Red.Println("expected a command. Open help to view commands.")
-		os.Exit(1)
-	}
-
-	rootPath, err := GetRootPath()
-	if err != nil {
-		color.Red.Println(rootPath)
 		os.Exit(1)
 	}
 
@@ -46,7 +41,7 @@ sites135 c404 http://127.0.0.1:8080
 		localAddr := os.Args[2]
 		publicAddr := os.Args[3]
 
-		links, err := getWebsiteLinks(localAddr, true, false)
+		links, err := getWebsiteLinks(localAddr, true)
 		if err != nil {
 			color.Red.Println(err.Error())
 			os.Exit(1)
@@ -75,7 +70,7 @@ sites135 c404 http://127.0.0.1:8080
 		}
 
 		localAddr := os.Args[2]
-		links, err := getWebsiteLinks(localAddr, false, false)
+		links, err := getWebsiteLinks(localAddr, false)
 		if err != nil {
 			color.Red.Println(err.Error())
 			os.Exit(1)
@@ -91,7 +86,7 @@ sites135 c404 http://127.0.0.1:8080
 			} else {
 				newAddr = link
 			}
-			res, err := http.Head(newAddr)
+			res, err := http.Get(newAddr)
 			if err != nil {
 				fmt.Println(err.Error())
 			}
@@ -103,69 +98,110 @@ sites135 c404 http://127.0.0.1:8080
 		}
 
 		fmt.Printf("404 count: %d\n", errorCount)
-
-	case "wdl":
-		if len(os.Args) != 4 {
-			color.Red.Println("expecting 3 args: webaddr and projectname")
-			os.Exit(1)
-		}
-
-		inputAddr := os.Args[2]
-		projectName := os.Args[3]
-
-		links, err := getWebsiteLinks(inputAddr, true, true)
-		if err != nil {
-			color.Red.Println(err.Error())
-			os.Exit(1)
-		}
-
-		fmt.Printf("Gotten all links. Total: %d\n", len(links))
-
-		baseOutPath := filepath.Join(rootPath, projectName)
-		os.MkdirAll(baseOutPath, 0777)
-		for _, link := range links {
-			var newAddr string
-			if strings.HasPrefix(link, "/") {
-				newAddr, _ = url.JoinPath(inputAddr, link)
-			} else {
-				newAddr = link
-			}
-			newAddrEsc, _ := url.QueryUnescape(newAddr)
-			res, err := http.Get(newAddrEsc)
-			if err != nil {
-				fmt.Println(err.Error())
-			}
-			defer res.Body.Close()
-			if res.StatusCode == 404 {
-				fmt.Printf("Not Found: %s\n", newAddrEsc)
-				continue
-			}
-
-			bodyOut, err := io.ReadAll(res.Body)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-
-			if link == "/" {
-				link = "/index"
-			}
-			toWritePath := filepath.Join(baseOutPath, link)
-			if !strings.Contains(toWritePath, ".") {
-				toWritePath += ".html"
-			}
-			err = os.MkdirAll(filepath.Dir(toWritePath), 0777)
-			if err != nil {
-				fmt.Println(err)
-				fmt.Println(newAddr)
-				continue
-			}
-
-			os.WriteFile(toWritePath, bodyOut, 0777)
-
-			// time.Sleep(1 * time.Second)
-		}
-
 	}
 
+}
+
+func isAbsoluteURL(testURL string) bool {
+	parsedURL, err := url.Parse(testURL)
+	if err != nil {
+		return false
+	}
+	return parsedURL.IsAbs()
+}
+
+func getLinksForAPage(addr string) ([]string, error) {
+	ret := make([]string, 0)
+
+	// Request the HTML page.
+	res, err := http.Get(addr)
+	if err != nil {
+		return nil, errors.Wrap(err, "http error")
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		return nil, errors.New(fmt.Sprintf("addr: %s status code error: %d %s", addr, res.StatusCode, res.Status))
+	}
+
+	// Load the HTML document
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "html error")
+	}
+
+	doc.Find("a").Each(func(i int, s *goquery.Selection) {
+		val, ok := s.Attr("href")
+		if !ok {
+			return
+		}
+		ret = append(ret, val)
+	})
+
+	return ret, nil
+}
+
+func getWebsiteLinks(addr string, localOnly bool) ([]string, error) {
+	ret, err := getLinksForAPage(addr)
+	if err != nil {
+		return nil, err
+	}
+
+	visited := []string{"/"}
+
+	for {
+		toWorkOnLink := ""
+		endLoopIndex := 0
+		for i, aLink := range ret {
+			if !slices.Contains(visited, aLink) {
+				toWorkOnLink = aLink
+				break
+			}
+			endLoopIndex = i
+		}
+
+		if endLoopIndex == len(ret)-1 {
+			break
+		}
+
+		visited = append(visited, toWorkOnLink)
+		if !isAbsoluteURL(toWorkOnLink) {
+			newAddr, err := url.JoinPath(addr, toWorkOnLink)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			innerRet, err := getLinksForAPage(newAddr)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			for _, aLink2 := range innerRet {
+				if !slices.Contains(ret, aLink2) {
+					ret = append(ret, aLink2)
+				}
+			}
+
+		}
+	}
+
+	if localOnly {
+		return getLocalLinks(addr, ret)
+	} else {
+		return visited, nil
+	}
+}
+
+func getLocalLinks(addr string, links []string) ([]string, error) {
+	ret := make([]string, 0)
+	for _, link := range links {
+		if strings.HasPrefix(link, "/") {
+			ret = append(ret, link)
+		}
+		if strings.HasPrefix(link, addr) {
+			ret = append(ret, link)
+		}
+	}
+
+	return ret, nil
 }
